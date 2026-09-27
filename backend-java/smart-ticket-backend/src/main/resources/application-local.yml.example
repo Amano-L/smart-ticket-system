@@ -1,0 +1,8 @@
+# 复制此文件为 application-local.yml，并填入你的真实配置
+spring:
+  datasource:
+    password: your-mysql-password
+
+jwt:
+  secret: your-jwt-secret-at-least-32-bytes
+  expire-seconds: 86400

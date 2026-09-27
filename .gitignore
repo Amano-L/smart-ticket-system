@@ -1,0 +1,23 @@
+# Java
+target/
+*.class
+*.jar
+*.log
+
+# IDEA
+.idea/
+*.iml
+out/
+
+# 敏感配置
+application-local.yml
+*-local.yml
+!.example.yml
+
+# Mac
+.DS_Store
+
+# Python（为迭代4预留）
+__pycache__/
+.venv/
+venv/
