@@ -2,6 +2,8 @@ package com.smartticket.ticket.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.smartticket.assign.dto.AssignRequest;
+import com.smartticket.assign.service.AssignService;
 import com.smartticket.common.BizException;
 import com.smartticket.common.ErrorCode;
 import com.smartticket.common.PageResult;
@@ -47,23 +49,27 @@ public class TicketServiceImpl implements TicketService {
     private final TicketFlowMapper ticketFlowMapper;
     private final TicketNoGenerator ticketNoGenerator;
     private final StringRedisTemplate redisTemplate;
+    private final AssignService assignService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public TicketDetailResponse create(TicketCreateRequest request, String requestId) {
+        // 1. 校验 requestId
         if (!StringUtils.hasText(requestId)) {
-            throw new BizException(PARAM_ERROR.getCode(), "缺少 X-Request-Id 请求头");
+            throw new BizException(ErrorCode.PARAM_ERROR.getCode(), "缺少 X-Request-Id 请求头");
         }
 
-        // 幂等：先查 Redis 是否已处理过
+        // 2. 幂等检查
         String key = IDEMPOTENT_KEY_PREFIX + requestId;
         String cachedTicketId = redisTemplate.opsForValue().get(key);
         if (cachedTicketId != null) {
             return detail(Long.valueOf(cachedTicketId));
         }
 
+        // 3. 取当前用户
         LoginUser currentUser = SecurityUtil.getCurrentUser();
 
+        // 4. 构造工单
         Ticket ticket = new Ticket();
         ticket.setTicketNo(ticketNoGenerator.generate());
         ticket.setTitle(request.getTitle());
@@ -73,11 +79,16 @@ public class TicketServiceImpl implements TicketService {
         ticket.setPriority(request.getPriority() == null ? 1 : request.getPriority());
         ticket.setCreatorId(currentUser.getUserId());
 
+        // 5. 保存
         ticketMapper.insert(ticket);
 
-        // 写幂等标记，5 分钟有效
+        // 6. 自动派单
+        assignService.autoAssign(ticket.getId());
+
+        // 7. 写幂等标记
         redisTemplate.opsForValue().set(key, ticket.getId().toString(), Duration.ofMinutes(5));
 
+        // 8. 返回详情
         return detail(ticket.getId());
     }
 
@@ -252,5 +263,10 @@ public class TicketServiceImpl implements TicketService {
 
         // 9. 返回详情
         return detail(id);
+    }
+
+    @Override
+    public void assign(Long id, AssignRequest request) {
+        assignService.manualAssign(id, request.getAssigneeId(), request.getRemark());
     }
 }

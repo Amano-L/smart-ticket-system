@@ -1,5 +1,6 @@
 package com.smartticket.ticket.controller;
 
+import com.smartticket.assign.dto.AssignRequest;
 import com.smartticket.common.PageResult;
 import com.smartticket.common.Result;
 import com.smartticket.ticket.dto.request.TicketCreateRequest;
@@ -53,5 +54,14 @@ public class TicketController {
             @PathVariable Long id,
             @Valid @RequestBody TicketTransitionRequest request) {
         return Result.success(ticketService.transition(id, request));
+    }
+
+    @PostMapping("/{id}/assign")
+    @PreAuthorize("hasRole('SUPERVISOR')")
+    public Result<TicketDetailResponse> assign(
+            @PathVariable Long id,
+            @Valid @RequestBody AssignRequest request) {
+        ticketService.assign(id, request);
+        return Result.success(ticketService.detail(id));
     }
 }
