@@ -9,12 +9,16 @@ import com.smartticket.security.LoginUser;
 import com.smartticket.security.SecurityUtil;
 import com.smartticket.ticket.dto.request.TicketCreateRequest;
 import com.smartticket.ticket.dto.request.TicketQueryRequest;
+import com.smartticket.ticket.dto.request.TicketTransitionRequest;
 import com.smartticket.ticket.dto.request.TicketUpdateRequest;
 import com.smartticket.ticket.dto.response.TicketDetailResponse;
+import com.smartticket.ticket.dto.response.TicketFlowResponse;
 import com.smartticket.ticket.dto.response.TicketListResponse;
 import com.smartticket.ticket.entity.Ticket;
+import com.smartticket.ticket.entity.TicketFlow;
 import com.smartticket.ticket.enums.TicketStatus;
 import com.smartticket.ticket.enums.TicketType;
+import com.smartticket.ticket.mapper.TicketFlowMapper;
 import com.smartticket.ticket.mapper.TicketMapper;
 import com.smartticket.ticket.service.TicketService;
 import com.smartticket.util.TicketNoGenerator;
@@ -30,6 +34,8 @@ import java.time.Duration;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import static com.smartticket.common.ErrorCode.PARAM_ERROR;
+
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -38,6 +44,7 @@ public class TicketServiceImpl implements TicketService {
     private static final String IDEMPOTENT_KEY_PREFIX = "ticket:idempotent:";
 
     private final TicketMapper ticketMapper;
+    private final TicketFlowMapper ticketFlowMapper;
     private final TicketNoGenerator ticketNoGenerator;
     private final StringRedisTemplate redisTemplate;
 
@@ -45,7 +52,7 @@ public class TicketServiceImpl implements TicketService {
     @Transactional(rollbackFor = Exception.class)
     public TicketDetailResponse create(TicketCreateRequest request, String requestId) {
         if (!StringUtils.hasText(requestId)) {
-            throw new BizException(ErrorCode.PARAM_ERROR.getCode(), "缺少 X-Request-Id 请求头");
+            throw new BizException(PARAM_ERROR.getCode(), "缺少 X-Request-Id 请求头");
         }
 
         // 幂等：先查 Redis 是否已处理过
@@ -113,14 +120,36 @@ public class TicketServiceImpl implements TicketService {
 
     @Override
     public TicketDetailResponse detail(Long id) {
+        // 1. 查工单
         Ticket ticket = ticketMapper.selectById(id);
         if (ticket == null) {
             throw new BizException(ErrorCode.TICKET_NOT_FOUND);
         }
+
+        // 2. 权限校验
         checkReadPermission(ticket);
 
+        // 3. 转 DTO
         TicketDetailResponse resp = new TicketDetailResponse();
         BeanUtils.copyProperties(ticket, resp);
+
+        // 4. 查流转记录（按时间升序）
+        List<TicketFlow> flowList = ticketFlowMapper.selectList(
+                new LambdaQueryWrapper<TicketFlow>()
+                        .eq(TicketFlow::getTicketId, id)
+                        .orderByAsc(TicketFlow::getCreatedAt)
+        );
+
+        // 5. 转成 DTO 塞进详情
+        List<TicketFlowResponse> flowResponses = flowList.stream()
+                .map(f -> {
+                    TicketFlowResponse fr = new TicketFlowResponse();
+                    BeanUtils.copyProperties(f, fr);
+                    return fr;
+                })
+                .collect(Collectors.toList());
+        resp.setFlows(flowResponses);
+
         return resp;
     }
 
@@ -174,5 +203,54 @@ public class TicketServiceImpl implements TicketService {
             return;
         }
         throw new BizException(ErrorCode.FORBIDDEN);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public TicketDetailResponse transition(Long id, TicketTransitionRequest request) {
+
+        // 1. 查工单
+        Ticket ticket = ticketMapper.selectById(id);
+        if (ticket == null) {
+            throw new BizException(ErrorCode.TICKET_NOT_FOUND);
+        }
+
+        // 2. 权限校验
+        checkWritePermission(ticket);
+
+        // 3. 转换目标状态
+        TicketStatus toStatus;
+        try {
+            toStatus = TicketStatus.fromCode(request.getToStatus());
+        } catch (IllegalArgumentException e) {
+            throw new BizException(ErrorCode.PARAM_ERROR.getCode(), "非法状态: " + request.getToStatus());
+        }
+
+        // 4. 转换当前状态
+        TicketStatus fromStatus = TicketStatus.fromCode(ticket.getStatus());
+
+        // 5. 校验流转合法性
+        if (!fromStatus.canTransitionTo(toStatus)) {
+            throw new BizException(ErrorCode.TICKET_STATUS_ERROR);
+        }
+
+        // 6. 记录旧状态
+        Integer oldStatus = ticket.getStatus();
+
+        // 7. 更新工单
+        ticket.setStatus(toStatus.getCode());
+        ticketMapper.updateById(ticket);
+
+        // 8. 写流转记录
+        TicketFlow flow = new TicketFlow();
+        flow.setTicketId(id);
+        flow.setFromStatus(oldStatus);
+        flow.setToStatus(toStatus.getCode());
+        flow.setOperatorId(SecurityUtil.getCurrentUserId());
+        flow.setRemark(request.getRemark());
+        ticketFlowMapper.insert(flow);
+
+        // 9. 返回详情
+        return detail(id);
     }
 }

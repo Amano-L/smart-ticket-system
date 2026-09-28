@@ -4,6 +4,7 @@ import com.smartticket.common.PageResult;
 import com.smartticket.common.Result;
 import com.smartticket.ticket.dto.request.TicketCreateRequest;
 import com.smartticket.ticket.dto.request.TicketQueryRequest;
+import com.smartticket.ticket.dto.request.TicketTransitionRequest;
 import com.smartticket.ticket.dto.request.TicketUpdateRequest;
 import com.smartticket.ticket.dto.response.TicketDetailResponse;
 import com.smartticket.ticket.dto.response.TicketListResponse;
@@ -44,5 +45,13 @@ public class TicketController {
             @PathVariable Long id,
             @Valid @RequestBody TicketUpdateRequest request) {
         return Result.success(ticketService.update(id, request));
+    }
+
+    @PostMapping("/{id}/transition")
+    @PreAuthorize("hasAnyRole('AGENT', 'SUPERVISOR', 'ADMIN')")
+    public Result<TicketDetailResponse> transition(
+            @PathVariable Long id,
+            @Valid @RequestBody TicketTransitionRequest request) {
+        return Result.success(ticketService.transition(id, request));
     }
 }

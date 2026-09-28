@@ -3,6 +3,7 @@ package com.smartticket.ticket.dto.response;
 import lombok.Data;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Data
 public class TicketDetailResponse {
@@ -17,4 +18,8 @@ public class TicketDetailResponse {
     private Long assigneeId;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+
+    // 流程记录
+    private List<TicketFlowResponse> flows;
+
 }
