@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.smartticket.assign.dto.AssignRequest;
 import com.smartticket.assign.service.AssignService;
+import com.smartticket.audit.service.AuditService;
 import com.smartticket.common.BizException;
 import com.smartticket.common.ErrorCode;
 import com.smartticket.common.PageResult;
@@ -50,6 +51,7 @@ public class TicketServiceImpl implements TicketService {
     private final TicketNoGenerator ticketNoGenerator;
     private final StringRedisTemplate redisTemplate;
     private final AssignService assignService;
+    private final AuditService auditService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -88,7 +90,10 @@ public class TicketServiceImpl implements TicketService {
         // 7. 写幂等标记
         redisTemplate.opsForValue().set(key, ticket.getId().toString(), Duration.ofMinutes(5));
 
-        // 8. 返回详情
+        // 8. 记录日志
+        auditService.record("CREATE_TICKET", "Ticket", ticket.getId(), "SUCCESS", "创建工单 " + ticket.getTicketNo());
+
+        // 9. 返回详情
         return detail(ticket.getId());
     }
 
@@ -261,7 +266,10 @@ public class TicketServiceImpl implements TicketService {
         flow.setRemark(request.getRemark());
         ticketFlowMapper.insert(flow);
 
-        // 9. 返回详情
+        // 9.记录日志
+        auditService.record("TRANSITION", "TICKET", id, "SUCCESS", "状态从 " + fromStatus.name() + " 变为 " + toStatus.name());
+
+        // 10. 返回详情
         return detail(id);
     }
 

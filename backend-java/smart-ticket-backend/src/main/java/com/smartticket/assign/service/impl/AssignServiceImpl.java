@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.smartticket.assign.entity.AgentLoad;
 import com.smartticket.assign.mapper.AgentLoadMapper;
 import com.smartticket.assign.service.AssignService;
+import com.smartticket.audit.service.AuditService;
 import com.smartticket.common.BizException;
 import com.smartticket.common.ErrorCode;
 import com.smartticket.ticket.entity.Ticket;
@@ -33,6 +34,7 @@ public class AssignServiceImpl implements AssignService {
     private final SysUserRoleMapper sysUserRoleMapper;
     private final AgentLoadMapper agentLoadMapper;
     private final TicketMapper ticketMapper;
+    private final AuditService auditService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -84,6 +86,9 @@ public class AssignServiceImpl implements AssignService {
         ticketMapper.updateById(ticket);
 
         log.info("自动派单：ticketId={}, assigneeId={}", ticketId, chosen.getUserId());
+
+        // 记录日志
+        auditService.record("AUTO_ASSIGN", "TICKET", ticketId, "SUCCESS", "自动派单给 userId=" + chosen.getUserId());
         return chosen.getUserId();
     }
 
@@ -137,5 +142,9 @@ public class AssignServiceImpl implements AssignService {
 
         log.info("手动改派：ticketId={}, oldAssigneeId={}, newAssigneeId={}, remark={}",
                 ticketId, oldAssigneeId, assigneeId, remark);
+
+        // 6.记录日志
+        String oldDesc = oldAssigneeId == null ? "无" : oldAssigneeId.toString();
+        auditService.record("MANUAL_ASSIGN", "TICKET", ticketId, "SUCCESS", "从 userId=" + oldAssigneeId + " 改派给 userId=" + assigneeId);
     }
 }
