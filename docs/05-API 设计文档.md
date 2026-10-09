@@ -11,14 +11,19 @@
 
 ## 2. 统一响应格式
 成功：
+
+```json
 {
   "code": 0,
   "message": "success",
   "data": {},
   "traceId": "a1b2c3d4e5f6"
 }
+```
 
 分页：
+
+```json
 {
   "code": 0,
   "message": "success",
@@ -30,14 +35,20 @@
   },
   "traceId": "a1b2c3d4e5f6"
 }
+```
 
 失败：
+
+```json
 {
   "code": 400,
   "message": "参数错误：标题不能为空",
   "data": null,
   "traceId": "a1b2c3d4e5f6"
 }
+```
+
+
 
 ## 3. 错误码
 | code | 说明                                 |
@@ -83,12 +94,17 @@
 POST /api/auth/login
 
 请求：
+
+```json
 {
   "username": "admin",
   "password": "admin123"
 }
+```
 
 响应：
+
+```json
 {
   "code": 0,
   "message": "success",
@@ -101,6 +117,9 @@ POST /api/auth/login
   },
   "traceId": "a1b2c3d4"
 }
+```
+
+
 
 ### 5.2 登出
 POST /api/auth/logout
@@ -111,6 +130,8 @@ POST /api/auth/logout
 GET /api/auth/me
 
 响应：
+
+```json
 {
   "code": 0,
   "data": {
@@ -120,6 +141,9 @@ GET /api/auth/me
     "roles": ["ADMIN"]
   }
 }
+```
+
+
 
 ## 6. 工单模块
 
@@ -129,13 +153,18 @@ POST /api/tickets
 幂等：请求头 X-Request-Id，相同 ID 重复提交返回原工单
 
 请求：
+
+```json
 {
   "title": "退款申请",
   "content": "订单 12345 未收到货，申请退款",
   "priority": 1
 }
+```
 
 响应：
+
+```json
 {
   "code": 0,
   "data": {
@@ -147,6 +176,7 @@ POST /api/tickets
     "aiFallback": false
   }
 }
+```
 
 说明：创建后自动触发 AI 分类 + 自动派单，AI 失败走规则分类，不影响创建。
 
@@ -212,7 +242,7 @@ GET /api/tickets/{id}
 
 ### 6.4 编辑工单
 PUT /api/tickets/{id}
-权限：AGENT / SUPERVISOR
+权限：AGENT / SUPERVISOR / ADMIN
 
 请求：
 {
@@ -222,7 +252,7 @@ PUT /api/tickets/{id}
 
 ### 6.5 状态流转
 POST /api/tickets/{id}/transition
-权限：AGENT / SUPERVISOR
+权限：AGENT / SUPERVISOR / ADMIN
 
 请求：
 {
@@ -388,8 +418,8 @@ Python 接口：
 | 查看自己工单 |  ✓   |       |            |       |
 | 查看分配工单 |      |   ✓   |     ✓      |   ✓   |
 | 查看全部工单 |      |       |     ✓      |   ✓   |
-| 编辑工单     |      |   ✓   |     ✓      |       |
-| 状态流转     |      |   ✓   |     ✓      |       |
+| 编辑工单     |      |   ✓   |     ✓      |   ✓   |
+| 状态流转     |      |   ✓   |     ✓      |   ✓   |
 | 手动派单     |      |       |     ✓      |       |
 | 客服回复     |      |   ✓   |            |       |
 | 统计         |      |       |     ✓      |   ✓   |

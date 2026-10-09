@@ -13,6 +13,7 @@ import com.smartticket.security.LoginUser;
 import com.smartticket.security.SecurityUtil;
 import com.smartticket.ticket.dto.request.TicketCreateRequest;
 import com.smartticket.ticket.dto.request.TicketQueryRequest;
+import com.smartticket.ticket.dto.request.TicketReplyRequest;
 import com.smartticket.ticket.dto.request.TicketTransitionRequest;
 import com.smartticket.ticket.dto.request.TicketUpdateRequest;
 import com.smartticket.ticket.dto.response.TicketDetailResponse;
@@ -20,10 +21,12 @@ import com.smartticket.ticket.dto.response.TicketFlowResponse;
 import com.smartticket.ticket.dto.response.TicketListResponse;
 import com.smartticket.ticket.entity.Ticket;
 import com.smartticket.ticket.entity.TicketFlow;
+import com.smartticket.ticket.entity.TicketReply;
 import com.smartticket.ticket.enums.TicketStatus;
 import com.smartticket.ticket.enums.TicketType;
 import com.smartticket.ticket.mapper.TicketFlowMapper;
 import com.smartticket.ticket.mapper.TicketMapper;
+import com.smartticket.ticket.mapper.TicketReplyMapper;
 import com.smartticket.ticket.service.TicketService;
 import com.smartticket.util.TicketNoGenerator;
 import lombok.RequiredArgsConstructor;
@@ -38,8 +41,6 @@ import java.time.Duration;
 import java.util.List;
 import java.util.stream.Collectors;
 
-import static com.smartticket.common.ErrorCode.PARAM_ERROR;
-
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -49,11 +50,14 @@ public class TicketServiceImpl implements TicketService {
 
     private final TicketMapper ticketMapper;
     private final TicketFlowMapper ticketFlowMapper;
+    private final TicketReplyMapper ticketReplyMapper;
     private final TicketNoGenerator ticketNoGenerator;
     private final StringRedisTemplate redisTemplate;
     private final AssignService assignService;
-    private final AuditService auditService;
     private final AiService aiService;
+    private final AuditService auditService;
+
+    // ==================== 创建 ====================
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -82,11 +86,9 @@ public class TicketServiceImpl implements TicketService {
         ticket.setStatus(TicketStatus.PENDING.getCode());
         ticket.setPriority(request.getPriority() == null ? 1 : request.getPriority());
         ticket.setCreatorId(currentUser.getUserId());
-
-        // 5. 保存
         ticketMapper.insert(ticket);
 
-        // AI 分类（失败降级 UNKNOWN，不阻塞创建）
+        // 5. AI 分类（失败降级 UNKNOWN，不阻塞创建）
         String type = aiService.classifyForTicket(ticket.getId(), ticket.getTitle(), ticket.getContent());
         if (!"UNKNOWN".equals(type)) {
             ticket.setType(type);
@@ -99,12 +101,14 @@ public class TicketServiceImpl implements TicketService {
         // 7. 写幂等标记
         redisTemplate.opsForValue().set(key, ticket.getId().toString(), Duration.ofMinutes(5));
 
-        // 8. 记录日志
-        auditService.record("CREATE_TICKET", "Ticket", ticket.getId(), "SUCCESS", "创建工单 " + ticket.getTicketNo());
+        // 8. 审计
+        auditService.record("CREATE_TICKET", "TICKET", ticket.getId(), "SUCCESS",
+                "创建工单 " + ticket.getTicketNo());
 
-        // 9. 返回详情
         return detail(ticket.getId());
     }
+
+    // ==================== 列表 ====================
 
     @Override
     public PageResult<TicketListResponse> list(TicketQueryRequest query) {
@@ -114,7 +118,7 @@ public class TicketServiceImpl implements TicketService {
         LambdaQueryWrapper<Ticket> wrapper = new LambdaQueryWrapper<>();
         // 角色数据过滤
         if (roles.contains("ADMIN") || roles.contains("SUPERVISOR")) {
-            // 看全部
+            // 全部可见
         } else if (roles.contains("AGENT")) {
             wrapper.eq(Ticket::getAssigneeId, currentUser.getUserId());
         } else {
@@ -143,40 +147,34 @@ public class TicketServiceImpl implements TicketService {
         return PageResult.of(list, result.getTotal(), result.getCurrent(), result.getSize());
     }
 
+    // ==================== 详情 ====================
+
     @Override
     public TicketDetailResponse detail(Long id) {
-        // 1. 查工单
         Ticket ticket = ticketMapper.selectById(id);
         if (ticket == null) {
             throw new BizException(ErrorCode.TICKET_NOT_FOUND);
         }
-
-        // 2. 权限校验
         checkReadPermission(ticket);
 
-        // 3. 转 DTO
         TicketDetailResponse resp = new TicketDetailResponse();
         BeanUtils.copyProperties(ticket, resp);
 
-        // 4. 查流转记录（按时间升序）
+        // 查流转记录
         List<TicketFlow> flowList = ticketFlowMapper.selectList(
                 new LambdaQueryWrapper<TicketFlow>()
                         .eq(TicketFlow::getTicketId, id)
                         .orderByAsc(TicketFlow::getCreatedAt)
         );
-
-        // 5. 转成 DTO 塞进详情
         List<TicketFlowResponse> flowResponses = flowList.stream()
-                .map(f -> {
-                    TicketFlowResponse fr = new TicketFlowResponse();
-                    BeanUtils.copyProperties(f, fr);
-                    return fr;
-                })
+                .map(this::toFlowResponse)
                 .collect(Collectors.toList());
         resp.setFlows(flowResponses);
 
         return resp;
     }
+
+    // ==================== 编辑 ====================
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -195,7 +193,106 @@ public class TicketServiceImpl implements TicketService {
         }
         ticketMapper.updateById(ticket);
 
+        auditService.record("UPDATE_TICKET", "TICKET", id, "SUCCESS",
+                "编辑工单 " + ticket.getTicketNo());
+
         return detail(id);
+    }
+
+    // ==================== 状态流转 ====================
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public TicketDetailResponse transition(Long id, TicketTransitionRequest request) {
+        // 1. 查工单
+        Ticket ticket = ticketMapper.selectById(id);
+        if (ticket == null) {
+            throw new BizException(ErrorCode.TICKET_NOT_FOUND);
+        }
+
+        // 2. 权限校验
+        checkWritePermission(ticket);
+
+        // 3. 转换目标状态
+        TicketStatus toStatus;
+        try {
+            toStatus = TicketStatus.fromCode(request.getToStatus());
+        } catch (IllegalArgumentException e) {
+            throw new BizException(ErrorCode.PARAM_ERROR.getCode(),
+                    "非法状态: " + request.getToStatus());
+        }
+
+        // 4. 转换当前状态
+        TicketStatus fromStatus = TicketStatus.fromCode(ticket.getStatus());
+
+        // 5. 校验流转合法性
+        if (!fromStatus.canTransitionTo(toStatus)) {
+            throw new BizException(ErrorCode.TICKET_STATUS_ERROR);
+        }
+
+        // 6. 记录旧状态
+        Integer oldStatus = ticket.getStatus();
+
+        // 7. 更新工单
+        ticket.setStatus(toStatus.getCode());
+        ticketMapper.updateById(ticket);
+
+        // 8. 写流转记录
+        TicketFlow flow = new TicketFlow();
+        flow.setTicketId(id);
+        flow.setFromStatus(oldStatus);
+        flow.setToStatus(toStatus.getCode());
+        flow.setOperatorId(SecurityUtil.getCurrentUserId());
+        flow.setRemark(request.getRemark());
+        ticketFlowMapper.insert(flow);
+
+        // 9. 审计
+        auditService.record("TRANSITION", "TICKET", id, "SUCCESS",
+                "状态从 " + oldStatus + " 变为 " + toStatus.getCode());
+
+        return detail(id);
+    }
+
+    // ==================== 手动改派 ====================
+
+    @Override
+    public void assign(Long id, AssignRequest request) {
+        assignService.manualAssign(id, request.getAssigneeId(), request.getRemark());
+    }
+
+    // ==================== 客服回复 ====================
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void reply(Long id, TicketReplyRequest request) {
+        // 1. 查工单
+        Ticket ticket = ticketMapper.selectById(id);
+        if (ticket == null) {
+            throw new BizException(ErrorCode.TICKET_NOT_FOUND);
+        }
+
+        // 2. 权限校验
+        checkWritePermission(ticket);
+
+        // 3. 保存回复
+        TicketReply reply = new TicketReply();
+        reply.setTicketId(id);
+        reply.setOperatorId(SecurityUtil.getCurrentUserId());
+        reply.setContent(request.getContent());
+        reply.setUseAiSuggestion(Boolean.TRUE.equals(request.getUseAiSuggestion()) ? 1 : 0);
+        ticketReplyMapper.insert(reply);
+
+        // 4. 审计
+        auditService.record("REPLY", "TICKET", id, "SUCCESS",
+                "客服回复工单 " + ticket.getTicketNo());
+    }
+
+    // ==================== 私有方法 ====================
+
+    private TicketFlowResponse toFlowResponse(TicketFlow flow) {
+        TicketFlowResponse fr = new TicketFlowResponse();
+        BeanUtils.copyProperties(flow, fr);
+        return fr;
     }
 
     private void checkReadPermission(Ticket ticket) {
@@ -228,62 +325,5 @@ public class TicketServiceImpl implements TicketService {
             return;
         }
         throw new BizException(ErrorCode.FORBIDDEN);
-    }
-
-    @Override
-    @Transactional(rollbackFor = Exception.class)
-    public TicketDetailResponse transition(Long id, TicketTransitionRequest request) {
-
-        // 1. 查工单
-        Ticket ticket = ticketMapper.selectById(id);
-        if (ticket == null) {
-            throw new BizException(ErrorCode.TICKET_NOT_FOUND);
-        }
-
-        // 2. 权限校验
-        checkWritePermission(ticket);
-
-        // 3. 转换目标状态
-        TicketStatus toStatus;
-        try {
-            toStatus = TicketStatus.fromCode(request.getToStatus());
-        } catch (IllegalArgumentException e) {
-            throw new BizException(ErrorCode.PARAM_ERROR.getCode(), "非法状态: " + request.getToStatus());
-        }
-
-        // 4. 转换当前状态
-        TicketStatus fromStatus = TicketStatus.fromCode(ticket.getStatus());
-
-        // 5. 校验流转合法性
-        if (!fromStatus.canTransitionTo(toStatus)) {
-            throw new BizException(ErrorCode.TICKET_STATUS_ERROR);
-        }
-
-        // 6. 记录旧状态
-        Integer oldStatus = ticket.getStatus();
-
-        // 7. 更新工单
-        ticket.setStatus(toStatus.getCode());
-        ticketMapper.updateById(ticket);
-
-        // 8. 写流转记录
-        TicketFlow flow = new TicketFlow();
-        flow.setTicketId(id);
-        flow.setFromStatus(oldStatus);
-        flow.setToStatus(toStatus.getCode());
-        flow.setOperatorId(SecurityUtil.getCurrentUserId());
-        flow.setRemark(request.getRemark());
-        ticketFlowMapper.insert(flow);
-
-        // 9.记录日志
-        auditService.record("TRANSITION", "TICKET", id, "SUCCESS", "状态从 " + fromStatus.name() + " 变为 " + toStatus.name());
-
-        // 10. 返回详情
-        return detail(id);
-    }
-
-    @Override
-    public void assign(Long id, AssignRequest request) {
-        assignService.manualAssign(id, request.getAssigneeId(), request.getRemark());
     }
 }

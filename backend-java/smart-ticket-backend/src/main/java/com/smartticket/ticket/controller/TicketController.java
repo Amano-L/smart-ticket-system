@@ -3,10 +3,7 @@ package com.smartticket.ticket.controller;
 import com.smartticket.assign.dto.AssignRequest;
 import com.smartticket.common.PageResult;
 import com.smartticket.common.Result;
-import com.smartticket.ticket.dto.request.TicketCreateRequest;
-import com.smartticket.ticket.dto.request.TicketQueryRequest;
-import com.smartticket.ticket.dto.request.TicketTransitionRequest;
-import com.smartticket.ticket.dto.request.TicketUpdateRequest;
+import com.smartticket.ticket.dto.request.*;
 import com.smartticket.ticket.dto.response.TicketDetailResponse;
 import com.smartticket.ticket.dto.response.TicketListResponse;
 import com.smartticket.ticket.service.TicketService;
@@ -63,5 +60,14 @@ public class TicketController {
             @Valid @RequestBody AssignRequest request) {
         ticketService.assign(id, request);
         return Result.success(ticketService.detail(id));
+    }
+
+    @PostMapping("/{id}/reply")
+    @PreAuthorize("hasRole('AGENT')")
+    public Result<Void> reply(
+            @PathVariable Long id,
+            @Valid @RequestBody TicketReplyRequest request) {
+        ticketService.reply(id, request);
+        return Result.success();
     }
 }

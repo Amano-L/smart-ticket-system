@@ -2,10 +2,7 @@ package com.smartticket.ticket.service;
 
 import com.smartticket.assign.dto.AssignRequest;
 import com.smartticket.common.PageResult;
-import com.smartticket.ticket.dto.request.TicketCreateRequest;
-import com.smartticket.ticket.dto.request.TicketQueryRequest;
-import com.smartticket.ticket.dto.request.TicketTransitionRequest;
-import com.smartticket.ticket.dto.request.TicketUpdateRequest;
+import com.smartticket.ticket.dto.request.*;
 import com.smartticket.ticket.dto.response.TicketDetailResponse;
 import com.smartticket.ticket.dto.response.TicketListResponse;
 
@@ -22,4 +19,6 @@ public interface TicketService {
     TicketDetailResponse transition(Long id, TicketTransitionRequest request);
 
     void assign(Long id, AssignRequest request);
+
+    void reply(Long id, TicketReplyRequest request);
 }

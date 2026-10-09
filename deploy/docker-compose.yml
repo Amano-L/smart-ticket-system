@@ -1,0 +1,56 @@
+services:
+  mysql:
+    image: mysql:8
+    container_name: smart-ticket-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: smart_ticket
+      TZ: Asia/Shanghai
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: [ "CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: smart-ticket-redis
+    ports:
+      - "6379:6379"
+
+  agent-python:
+    build: ../agent-python
+    container_name: smart-ticket-agent
+    ports:
+      - "8000:8000"
+
+  backend-java:
+    build: ../backend-java/smart-ticket-backend
+    container_name: smart-ticket-backend
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: ""
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/smart_ticket?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: root
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      JWT_SECRET: smart-ticket-secret-key-please-change-in-production-32bytes
+      JWT_EXPIRE_SECONDS: 86400
+      PYTHON_AGENT_URL: http://agent-python:8000
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      agent-python:
+        condition: service_started
+
+volumes:
+  mysql_data:
