@@ -2,6 +2,7 @@ package com.smartticket.ticket.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.smartticket.ai.service.AiService;
 import com.smartticket.assign.dto.AssignRequest;
 import com.smartticket.assign.service.AssignService;
 import com.smartticket.audit.service.AuditService;
@@ -52,6 +53,7 @@ public class TicketServiceImpl implements TicketService {
     private final StringRedisTemplate redisTemplate;
     private final AssignService assignService;
     private final AuditService auditService;
+    private final AiService aiService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -83,6 +85,13 @@ public class TicketServiceImpl implements TicketService {
 
         // 5. 保存
         ticketMapper.insert(ticket);
+
+        // AI 分类（失败降级 UNKNOWN，不阻塞创建）
+        String type = aiService.classifyForTicket(ticket.getId(), ticket.getTitle(), ticket.getContent());
+        if (!"UNKNOWN".equals(type)) {
+            ticket.setType(type);
+            ticketMapper.updateById(ticket);
+        }
 
         // 6. 自动派单
         assignService.autoAssign(ticket.getId());
