@@ -3,6 +3,9 @@ package com.smartticket.common;
 import lombok.Data;
 import org.slf4j.MDC;
 
+/*
+ * 统一响应格式
+ */
 @Data
 public class Result<T> {
 

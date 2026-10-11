@@ -18,6 +18,14 @@ import java.io.IOException;
 import java.util.List;
 import java.util.stream.Collectors;
 
+/*
+ * JWT 认证过滤器
+   -> 校验 JWT 是否有效
+   -> 解析出用户信息
+   -> 构造 Authentication
+   -> 放入 SecurityContextHolder
+   -> 后续 Controller / 授权逻辑就能拿到当前登录用户
+ */
 @Component
 @RequiredArgsConstructor
 public class JwtAuthFilter extends OncePerRequestFilter {

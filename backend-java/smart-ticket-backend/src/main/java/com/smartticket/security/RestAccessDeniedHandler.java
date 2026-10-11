@@ -12,6 +12,9 @@ import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 
+/*
+ * REST 访问拒绝处理器
+ */
 @Component
 @RequiredArgsConstructor
 public class RestAccessDeniedHandler implements AccessDeniedHandler {

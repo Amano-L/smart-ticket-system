@@ -5,6 +5,9 @@ import lombok.Data;
 
 import java.util.List;
 
+/*
+ * 登录用户
+ */
 @Data
 @AllArgsConstructor
 public class LoginUser {

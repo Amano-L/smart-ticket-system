@@ -8,6 +8,9 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authorization.AuthorizationDeniedException;
 
+/*
+ * 统一异常处理
+ */
 @Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {

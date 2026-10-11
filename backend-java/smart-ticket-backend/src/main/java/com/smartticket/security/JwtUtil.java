@@ -11,6 +11,9 @@ import java.security.Key;
 import java.util.Date;
 import java.util.List;
 
+/*
+ * JWT 工具类
+ */
 @Component
 public class JwtUtil {
 
@@ -20,10 +23,12 @@ public class JwtUtil {
     @Value("${jwt.expire-seconds}")
     private long expireSeconds;
 
+    // 获取Key
     private Key getKey() {
         return Keys.hmacShaKeyFor(secret.getBytes());
     }
 
+    // 生成Token
     public String generateToken(Long userId, String username, List<String> roles) {
         Date now = new Date();
         Date expiry = new Date(now.getTime() + expireSeconds * 1000);
@@ -37,6 +42,7 @@ public class JwtUtil {
                 .compact();
     }
 
+    // 解析Token
     public Claims parseToken(String token) {
         return Jwts.parserBuilder()
                 .setSigningKey(getKey())
@@ -45,6 +51,7 @@ public class JwtUtil {
                 .getBody();
     }
 
+    // 验证Token
     public boolean validateToken(String token) {
         try {
             parseToken(token);
@@ -54,6 +61,7 @@ public class JwtUtil {
         }
     }
 
+    // 从 Token 中取数据
     public String getUsername(String token) {
         return parseToken(token).getSubject();
     }

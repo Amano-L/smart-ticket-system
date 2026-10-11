@@ -12,6 +12,9 @@ import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 
+/*
+ * REST 认证入口点
+ */
 @Component
 @RequiredArgsConstructor
 public class RestAuthenticationEntryPoint implements AuthenticationEntryPoint {

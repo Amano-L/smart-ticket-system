@@ -5,6 +5,9 @@ import com.smartticket.common.ErrorCode;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 
+/*
+ * 获取当前登录用户的工具类
+ */
 public class SecurityUtil {
 
     public static LoginUser getCurrentUser() {

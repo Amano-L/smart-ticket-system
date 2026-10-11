@@ -13,6 +13,10 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import java.io.IOException;
 import java.util.UUID;
 
+/*
+ * 添加 traceId 到请求和响应
+ * 给每个请求分配一个 traceId，放进日志和响应头，请求结束再清理掉，用于链路追踪。
+ */
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE)
 public class TraceIdFilter extends OncePerRequestFilter {
